@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>やさしい点字ワープロ V4</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#f4f6f8;color:#17202a}
+header{background:#17324d;color:white;padding:18px;text-align:center}
+header h1{margin:0;font-size:1.45rem}
+main{max-width:1100px;margin:auto;padding:14px}
+section{background:white;border-radius:14px;padding:15px;margin-bottom:14px;box-shadow:0 2px 9px #0001}
+h2{font-size:1.1rem;margin:0 0 12px}
+textarea{width:100%;min-height:110px;font-size:1.15rem;padding:12px;border:2px solid #b8c4cf;border-radius:10px;resize:vertical}
+button,select{font:inherit}
+.actionbar,.categories{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+button{border:2px solid #9eacb8;border-radius:10px;background:#fff;padding:10px 13px;cursor:pointer;min-height:44px}
+button:hover{background:#eef5fb}
+button:active{transform:translateY(1px)}
+.primary{background:#dceeff;border-color:#4b88bd;font-weight:700}
+.danger{background:#fff0f0;border-color:#d88}
+#brailleGrid{display:grid;grid-template-columns:repeat(5,minmax(115px,1fr));gap:10px}
+.brailleBtn{min-height:142px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;background:#fff}
+.brailleBtn .dots{display:grid;grid-template-columns:repeat(2,24px);grid-template-rows:repeat(3,24px);gap:3px}
+.dot{width:24px;height:24px;border-radius:50%;border:2px solid #555;background:white}
+.dot.on{background:#111}
+.char{font-size:1.25rem;font-weight:800}
+.num{font-size:.8rem;color:#4d5963}
+.small{font-size:.86rem;color:#53606b}
+.result{border:1px solid #ccd6df;border-radius:10px;padding:12px;min-height:55px;overflow-wrap:anywhere}
+.brailleLine{display:flex;flex-wrap:wrap;gap:5px;align-items:flex-start}
+.cell{display:inline-flex;flex-direction:column;align-items:center;padding:3px}
+.cell .dots{display:grid;grid-template-columns:repeat(2,14px);grid-template-rows:repeat(3,14px);gap:2px}
+.cell .dot{width:14px;height:14px;border-width:1px}
+.cell span{font-size:.72rem;margin-top:2px}
+.cameraBox{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+video,img#photo{width:100%;max-height:330px;background:#111;border-radius:10px;object-fit:contain}
+#photo{display:none}
+.lesson{background:#f5f9fc;border-left:5px solid #4b88bd;padding:12px;border-radius:8px}
+.status{padding:8px 10px;background:#eef7ee;border-radius:8px;margin-top:8px}
+@media(max-width:800px){#brailleGrid{grid-template-columns:repeat(3,minmax(100px,1fr))}}
+@media(max-width:520px){#brailleGrid{grid-template-columns:repeat(2,minmax(100px,1fr))}.cameraBox{grid-template-columns:1fr}header h1{font-size:1.2rem}}
+</style>
+</head>
+<body>
+<header><h1>やさしい点字ワープロ V4</h1><div>見る → 選ぶ → 入力する → 読む → 聞く</div></header>
+<main>
+
+<section>
+<h2>① 日本語入力</h2>
+<textarea id="text" placeholder="ここに日本語を入力してください"></textarea>
+<div class="actionbar">
+<button class="primary" onclick="updateBraille()">点字に変換</button>
+<button onclick="speakText()">読み上げ</button>
+<button onclick="speechSynthesis.cancel()">読み上げ停止</button>
+<button onclick="addSpace()">空白</button>
+<button onclick="deleteOne()">1文字削除</button>
+<button class="danger" onclick="clearText()">全消去</button>
+</div>
+<div class="status" id="status">点字ボタンは下に常時表示されています。</div>
+</section>
+
+<section>
+<h2>② 点字ボタン</h2>
+<div class="small">点字は「1 4 / 2 5 / 3 6」の6点です。黒丸＝点あり、白丸＝点なし。</div>
+<div class="categories" id="categories"></div>
+<div id="brailleGrid" aria-label="点字ボタン一覧"></div>
+</section>
+
+<section>
+<h2>③ 入力結果</h2>
+<div><b>日本語：</b></div>
+<div class="result" id="resultText"></div>
+<div style="margin-top:10px"><b>点字：</b></div>
+<div class="result brailleLine" id="resultBraille"></div>
+<div class="actionbar">
+<button class="primary" onclick="speakText()">文章を読み上げ</button>
+<button onclick="speakSelected()">選択中の文字を読み上げ</button>
+</div>
+</section>
+
+<section>
+<h2>④ カメラ</h2>
+<div class="small">V4ではカメラの起動・撮影・画像表示まで対応します。点字画像の自動認識は将来版です。</div>
+<div class="actionbar">
+<button class="primary" onclick="startCamera()">カメラ開始</button>
+<button onclick="takePhoto()">撮影</button>
+<button onclick="stopCamera()">停止</button>
+</div>
+<div class="cameraBox">
+<video id="video" autoplay playsinline></video>
+<canvas id="canvas" style="display:none"></canvas>
+<img id="photo" alt="撮影した画像">
+</div>
+</section>
+
+<section>
+<h2>⑤ 点字学習</h2>
+<div class="lesson" id="lesson">点字ボタンを押すと、ここに文字・点字・点番号が表示されます。</div>
+</section>
+
+</main>
+
+<script>
+const B={
+"あ":"100000","い":"101000","う":"110000","え":"110100","お":"100100",
+"か":"100010","き":"101010","く":"110010","け":"110110","こ":"100110",
+"さ":"100011","し":"101011","す":"110011","せ":"110111","そ":"100111",
+"た":"100001","ち":"101001","つ":"110001","て":"110101","と":"100101",
+"な":"100010","に":"101010","ぬ":"110010","ね":"110110","の":"100110",
+"は":"100011","ひ":"101011","ふ":"110011","へ":"110111","ほ":"100111",
+"ま":"100001","み":"101001","む":"110001","め":"110101","も":"100101",
+"や":"100100","ゆ":"110100","よ":"100110",
+"ら":"100010","り":"101010","る":"110010","れ":"110110","ろ":"100110",
+"わ":"010110","を":"010101","ん":"001110",
+"ぁ":"100100","ぃ":"101000","ぅ":"110000","ぇ":"110100","ぉ":"100100",
+"ゃ":"100100","ゅ":"110100","ょ":"100110","っ":"001001"
+};
+
+const cats={
+"基本かな":["あ","い","う","え","お","か","き","く","け","こ","さ","し","す","せ","そ","た","ち","つ","て","と","な","に","ぬ","ね","の","は","ひ","ふ","へ","ほ","ま","み","む","め","も","や","ゆ","よ","ら","り","る","れ","ろ","わ","を","ん"],
+"濁音":["が","ぎ","ぐ","げ","ご","ざ","じ","ず","ぜ","ぞ","だ","ぢ","づ","で","ど","ば","び","ぶ","べ","ぼ"],
+"半濁音":["ぱ","ぴ","ぷ","ぺ","ぽ"],
+"拗音":["きゃ","きゅ","きょ","しゃ","しゅ","しょ","ちゃ","ちゅ","ちょ","にゃ","にゅ","にょ","ひゃ","ひゅ","ひょ","みゃ","みゅ","みょ","りゃ","りゅ","りょ","ぎゃ","ぎゅ","ぎょ","じゃ","じゅ","じょ","びゃ","びゅ","びょ","ぴゃ","ぴゅ","ぴょ"],
+"数字":["0","1","2","3","4","5","6","7","8","9"],
+"英字":["a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q","r","s","t","u","v","w","x","y","z"],
+"句読点":["。","、","・","？","！","：","；","「","」","（","）"],
+"記号":["ー","＋","－","×","÷","＝","／","％","＆","＃","＠","＿","＊"]
+};
+
+const P={...B,
+"が":"110010","ぎ":"111010","ぐ":"110011","げ":"110111","ご":"100111",
+"ざ":"100011","じ":"101011","ず":"110011","ぜ":"110111","ぞ":"100111",
+"だ":"100001","ぢ":"101001","づ":"110001","で":"110101","ど":"100101",
+"ば":"100011","び":"101011","ぶ":"110011","べ":"110111","ぼ":"100111",
+"ぱ":"100011","ぴ":"101011","ぷ":"110011","ぺ":"110111","ぽ":"100111",
+"。":"010011","、":"010000","・":"001001","？":"011001","！":"011010","：":"001101","；":"001011","「":"011100","」":"001110","（":"011100","）":"001110",
+"ー":"010001","＋":"001011","－":"001001","×":"001101","÷":"010011","＝":"001111","／":"000101","％":"010101","＆":"011110","＃":"001111","＠":"000110","＿":"000011","＊":"010010"
+};
+
+const alpha={"a":"100000","b":"110000","c":"100100","d":"100110","e":"100010","f":"110100","g":"110110","h":"110010","i":"010100","j":"010110","k":"101000","l":"111000","m":"101100","n":"101110","o":"101010","p":"111100","q":"111110","r":"111010","s":"011100","t":"011110","u":"101001","v":"111001","w":"010111","x":"101101","y":"101111","z":"101011"};
+const digits={"0":"001111","1":"100000","2":"110000","3":"100100","4":"100110","5":"100010","6":"110100","7":"110110","8":"110010","9":"010100"};
+
+function dots(pattern,small=false){
+ let s='<div class="dots">';
+ for(let i=0;i<6;i++) s+=`<span class="dot ${pattern[i]==="1"?"on":""}"></span>`;
+ return s+'</div>';
+}
+function nums(pattern){let a=[];for(let i=0;i<6;i++)if(pattern[i]==="1")a.push(i+1);return a.join("・")||"なし"}
+
+function renderCats(){
+ const el=document.getElementById("categories");
+ Object.keys(cats).forEach((c,i)=>{
+  const b=document.createElement("button");b.textContent=c;b.onclick=()=>renderGrid(c);if(i===0)b.className="primary";el.appendChild(b);
+ });
+}
+function patternFor(ch){
+ if(P[ch]) return P[ch];
+ if(B[ch]) return B[ch];
+ if(alpha[ch]) return alpha[ch];
+ if(digits[ch]) return digits[ch];
+ if(ch===" ") return "000000";
+ return "000000";
+}
+function renderGrid(cat){
+ const grid=document.getElementById("brailleGrid");grid.innerHTML="";
+ cats[cat].forEach(ch=>{
+  const p=patternFor(ch);
+  const b=document.createElement("button");b.className="brailleBtn";
+  b.innerHTML=dots(p)+`<div class="char">${ch}</div><div class="num">点 ${nums(p)}</div>`;
+  b.title=`${ch}：点 ${nums(p)}`;
+  b.onclick=()=>insertChar(ch,p);
+  grid.appendChild(b);
+ });
+}
+function insertChar(ch,p){
+ const t=document.getElementById("text");
+ const start=t.selectionStart,end=t.selectionEnd;
+ t.value=t.value.slice(0,start)+ch+t.value.slice(end);
+ t.selectionStart=t.selectionEnd=start+ch.length;
+ updateBraille();showLesson(ch,p);t.focus();
+}
+function showLesson(ch,p){
+ document.getElementById("lesson").innerHTML=`<b>文字：</b>${ch}<br><b>点字：</b>${dots(p)}<br><b>点番号：</b>${nums(p)}<br><b>パターン：</b>${p}`;
+}
+function addSpace(){insertChar(" ","000000")}
+function deleteOne(){
+ const t=document.getElementById("text"),s=t.selectionStart,e=t.selectionEnd;
+ if(s!==e){t.value=t.value.slice(0,s)+t.value.slice(e);t.selectionStart=t.selectionEnd=s}
+ else if(s>0){t.value=t.value.slice(0,s-1)+t.value.slice(s);t.selectionStart=t.selectionEnd=s-1}
+ updateBraille();t.focus();
+}
+function clearText(){document.getElementById("text").value="";updateBraille()}
+function convertChar(ch){
+ if(ch===" ")return "000000";
+ if(alpha[ch.toLowerCase()])return alpha[ch.toLowerCase()];
+ if(digits[ch])return digits[ch];
+ if(P[ch])return P[ch];
+ if(B[ch])return B[ch];
+ if(/[A-Z]/.test(ch))return alpha[ch.toLowerCase()];
+ return "000000";
+}
+function updateBraille(){
+ const text=document.getElementById("text").value;
+ document.getElementById("resultText").textContent=text||"（入力なし）";
+ const out=document.getElementById("resultBraille");out.innerHTML="";
+ for(const ch of text){
+  const p=convertChar(ch);
+  const cell=document.createElement("div");cell.className="cell";
+  cell.innerHTML=dots(p,true)+`<span>${ch}</span>`;
+  out.appendChild(cell);
+ }
+ document.getElementById("status").textContent=`入力文字数：${[...text].length}　点字表示：${text? "変換済み":"待機中"}`;
+}
+function speakText(){const t=document.getElementById("text").value;if(t){speechSynthesis.cancel();speechSynthesis.speak(new SpeechSynthesisUtterance(t))}}
+function speakSelected(){
+ const t=document.getElementById("text"),s=t.selectionStart,e=t.selectionEnd;
+ const x=t.value.slice(s,e)||t.value.slice(Math.max(0,s-1),s);
+ if(x){speechSynthesis.cancel();speechSynthesis.speak(new SpeechSynthesisUtterance(x))}
+}
+let stream=null;
+async function startCamera(){
+ try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});document.getElementById("video").srcObject=stream}
+ catch(e){alert("カメラを起動できませんでした。ブラウザのカメラ許可とHTTPS/localhost環境を確認してください。")}
+}
+function takePhoto(){
+ const v=document.getElementById("video"),c=document.getElementById("canvas"),p=document.getElementById("photo");
+ if(!v.videoWidth){alert("先に「カメラ開始」を押してください。");return}
+ c.width=v.videoWidth;c.height=v.videoHeight;c.getContext("2d").drawImage(v,0,0);
+ p.src=c.toDataURL("image/png");p.style.display="block";
+}
+function stopCamera(){if(stream){stream.getTracks().forEach(x=>x.stop());stream=null}document.getElementById("video").srcObject=null}
+
+document.getElementById("text").addEventListener("input",updateBraille);
+renderCats();renderGrid("基本かな");updateBraille();
+</script>
+</body>
+</html>
