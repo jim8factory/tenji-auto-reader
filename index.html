@@ -1,0 +1,526 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>やさしい点字ワープロ V4.10</title><style>body{font-family:system-ui,'Yu Gothic',sans-serif;margin:0;background:#f3f6f8;color:#18222d}header{background:#17324d;color:#fff;padding:16px}main{display:grid;grid-template-columns:300px minmax(0,1fr) 360px;gap:12px;padding:12px;max-width:1500px;margin:auto;align-items:start}.p{background:#fff;border:1px solid #ccd5df;border-radius:12px;padding:12px}input,select,button{font:inherit}input,select{width:100%;box-sizing:border-box;padding:9px;margin-bottom:8px}button{padding:8px 10px;border:1px solid #8999a8;border-radius:8px;background:#fff;cursor:pointer}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(115px,1fr));gap:8px;max-height:none;overflow:visible}.grid-wrap{max-height:70vh;overflow:auto;border:1px solid #ccd5df;border-radius:10px;padding:8px}.lens{position:sticky;top:10px;background:#fff;border:2px solid #17324d;border-radius:14px;padding:14px;margin-bottom:12px;text-align:center}.lens h2{margin:0 0 8px}.lensbox{min-height:190px;display:flex;align-items:center;justify-content:center}.lensbox .br{transform:scale(2.5);margin:45px}.selected{outline:4px solid #17324d;outline-offset:2px}.card{min-height:120px;display:flex;flex-direction:column;align-items:center;justify-content:center}.br{display:grid;grid-template-columns:repeat(2,18px);grid-template-rows:repeat(3,18px);gap:4px;padding:7px;border:1px solid #ccd5df;border-radius:8px}.dot{width:18px;height:18px;border-radius:50%;background:#dce2e8}.on{background:#111}.lab{font-size:17px;font-weight:800;margin-top:6px}.meta,.small{font-size:11px;color:#586879}.big{transform:scale(1.7);margin:25px}.status{padding:9px;border-radius:8px;margin:7px 0}.ok{background:#eaf7ee}.warn{background:#fff5df}.err{background:#fdeaea}.kv{display:grid;grid-template-columns:90px 1fr;gap:7px;font-size:13px;margin-top:18px}textarea{width:100%;box-sizing:border-box;min-height:100px}@media(max-width:1050px){main{grid-template-columns:240px 1fr}#detail{grid-column:1/-1}}@media(max-width:700px){main{grid-template-columns:1fr}}
+.camera{grid-column:1/-1;margin-top:0;border:2px solid #17324d;border-radius:14px;padding:14px;background:#fff}
+.camera h2{margin:0 0 8px}
+.camera video,.camera canvas,.camera img{width:100%;max-height:360px;object-fit:contain;border:1px solid #ccd5df;border-radius:10px;background:#111}
+.camera-row{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.camera-row button{flex:1;min-width:120px}
+.cam-status{padding:9px;border-radius:8px;margin:8px 0;background:#eef4f8}
+.cam-result{font-size:18px;font-weight:800;padding:10px;border:1px solid #ccd5df;border-radius:8px;background:#f8fafb;white-space:pre-wrap}
+.cam-help{font-size:12px;color:#586879;line-height:1.55}
+@media(max-width:700px){.camera video,.camera canvas,.camera img{max-height:300px}}
+</style>
+<style>
+/* V4.10 FIX: 安定表示 */
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0;width:100%;min-height:100%;overflow-x:hidden}
+img,canvas,video{max-width:100%;height:auto}
+button,input,select,textarea{max-width:100%;box-sizing:border-box}
+h1,h2,h3,p,label,small,div,span{overflow-wrap:anywhere}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%}
+@media(max-width:900px){
+  .layout,.grid,main{grid-template-columns:1fr!important}
+}
+</style>
+</head><body><header><h1>やさしい点字ワープロ V4.10</h1><div>照合エンジン追加版　点字列→候補かな→一般日本語辞書</div></header><main>
+<section class="camera">
+  <h2>📷 スマホ点字カメラレンズ</h2>
+  <div class="cam-help">
+    自販機・駅の時刻表・券売機などの<strong>実物の点字</strong>をカメラで撮影し、
+    凸点の候補を検出して6点式へ変換します。明るい場所で、点字面をできるだけ正面から撮影してください。
+  </div>
+  <video id="camVideo" autoplay playsinline muted></video>
+  <canvas id="camCanvas" style="display:block;width:100%;max-height:55vh;border:2px solid #8999a8;border-radius:10px;touch-action:none;background:#111"></canvas><div id="roiHelp" class="cam-help">撮影後、点字が写っている範囲をドラッグして選択してください。選択範囲の外は解析しません。</div>
+  <div class="camera-row">
+    <button id="camStart">📷 カメラ開始</button>
+    <button id="camShot">📸 撮影</button>
+    <button id="camStop">■ 停止</button>
+    <button id="camAnalyze">🔎 点を検出</button>
+    <button id="camCells">▦ 点字マス候補</button>
+  </div>
+  <div id="camStatus" class="cam-status">カメラ未起動</div>
+  <div id="camResult" class="cam-result">認識結果：—</div>
+  <div class="p" style="margin-top:10px"><h3>認識できる文字</h3><div class="small">現在の点字認識辞書に登録されている文字・符号です。実際のカメラ認識結果がこの一覧にない場合は「未認識」とします。</div><div id="cameraRecognizable" style="line-height:1.9;margin-top:6px"></div></div>
+  <div class="camera-row">
+    <button id="camSpeak">🔊 読み込み結果を読み上げ</button>
+    <button id="camSpeakStop">■ 読み上げ停止</button>
+  </div>
+  <div id="speakStatus" class="cam-status">読み上げ：待機中</div>
+  <div class="cam-help">
+    ※ V4.10の画像認識は、撮影画像から凸点候補を検出する方式です。
+    光の反射・斜め撮影・汚れ・背景などで誤認識する場合があります。認識結果は必ず実物と照合してください。
+  </div>
+
+<div id="v410Notation" class="p" style="margin-top:10px;">
+  <h3>点字表記 → かな</h3>
+  <div id="v410NotationResult">カメラ解析後に、点字セル列を日本語点字の基本表記規則で変換します。</div>
+</div>
+</section>
+<section class="p"><h2>辞書・検索</h2><input id="q" placeholder="日本語・読み・点番号"><select id="cat"><option value="">すべて</option></select><button id="val">辞書を検証</button> <button id="sp">読み上げ</button><hr><h3>一般日本語辞書（語彙層）</h3><div class="small">JMdict XML / JSON / TSV を読み込みます。語彙データと点字表記データは別層で管理します。</div><input id="df" type="file" accept=".json,.xml,.txt,.tsv"><div id="ds" class="status warn">一般日本語辞書：未読み込み</div><div id="lexstat" class="small"></div><input id="lq" placeholder="辞書語検索（見出し・読み・意味）"><div id="lex"></div><div id="rep"></div>
+<hr><h3>点字列→候補かな→辞書照合</h3>
+<div class="small">点番号を「1,2|5|3,4」のように入力します。| はマス区切りです。</div>
+<input id="seq" placeholder="例：1,2|5|3,4">
+<button id="decode">点字列を照合</button>
+<div id="cand"></div>
+<hr><h3>基準資料</h3><p class="small">日本点字委員会『日本点字表記法2018年版』を基準に、公開資料で確認できる基本かな・濁音・半濁音・拗音・数字・主要符号を構造化しています。未確認の符号は追加しません。</p><p><a href="https://braille.jp/data/hyoukiho.html" target="_blank">日本点字表記法2018年版</a><br><a href="https://braille.jp/topics/yonndemiyo.html" target="_blank">点字を読んでみよう</a></p><p class="small">一般日本語辞書候補：JMdict。利用時はEDRDGのライセンス表示・更新条件に従います。</p><p><a href="https://www.edrdg.org/edrdg/licence.html" target="_blank">JMdict/EDRDGライセンス</a></p></section><section class="p"><div class="lens"><h2>🔎 点字レンズ</h2><div class="small">点字ボタンを押すと、ここに自動表示します。</div><div id="lensbox" class="lensbox"><span class="small">点字ボタンを選択してください</span></div><div id="lensmeta" class="lab">未選択</div></div><h2>点字一覧</h2><div class="small">一覧はこの枠内をスクロールできます。途中で切れません。</div><div class="grid-wrap"><div id="grid" class="grid"></div></div></section><section class="p" id="detail"><h2>点字レンズ・詳細</h2><div id="d">項目を選択してください。</div><hr><textarea id="ed" placeholder="選択した点字を入力できます"></textarea><button id="st">🔊 入力文を読み上げ</button><button id="cl">消去</button></section></main><script>
+/* V4.5: lexical dictionary layer + Japanese braille notation layer */
+const vowels={あ:[1],い:[1,2],う:[1,4],え:[1,2,4],お:[2,4]};
+const rows={か:[6],さ:[5,6],た:[3,5],な:[3],は:[3,6],ま:[3,5,6],ら:[5]};
+const kana=[]; const cols=['あ','い','う','え','お'];
+function add(label,dots,category='基本かな',status='official-basic',extra={}){const cells=Array.isArray(dots[0])?dots:[dots];kana.push({label,reading:label,cells,category,status,source:status==='official-basic'?'日本点字委員会「点字を読んでみよう！」／点字一覧表':'日本点字表記法2018年版を基準に要照合',...extra});}
+Object.entries(rows).forEach(([row,extra])=>{const chars={か:'かきくけこ',さ:'さしすせそ',た:'たちつてと',な:'なにぬねの',は:'はひふへほ',ま:'まみむめも',ら:'らりるれろ'}[row];[...chars].forEach((ch,i)=>add(ch,[...vowels[cols[i]],...extra]));});
+Object.entries(vowels).forEach(([ch,d])=>add(ch,d));
+add('や',[3,4]);add('ゆ',[3,4,6]);add('よ',[3,4,5]);add('わ',[3]);add('ゐ',[2,3]);add('ゑ',[2,3,5]);add('を',[3,5]);add('ん',[3,5,6]);add('っ',[2]);add('ー',[2,5]);
+// 日本点字委員会の公開資料で確認できる二マス表記を構造化して登録する。
+const base=new Map(kana.map(e=>[e.label,e.cells[0]]));
+const voiced={'が':'か','ぎ':'き','ぐ':'く','げ':'け','ご':'こ','ざ':'さ','じ':'し','ず':'す','ぜ':'せ','ぞ':'そ','だ':'た','ぢ':'ち','づ':'つ','で':'て','ど':'と','ば':'は','び':'ひ','ぶ':'ふ','べ':'へ','ぼ':'ほ'};
+Object.entries(voiced).forEach(([v,b])=>add(v,[ [5], base.get(b) ],'濁音','official-basic',{reading:v,source:'日本点字委員会「点字を読んでみよう！」'}));
+const paku={'ぱ':'は','ぴ':'ひ','ぷ':'ふ','ぺ':'へ','ぽ':'ほ'};
+Object.entries(paku).forEach(([v,b])=>add(v,[ [6], base.get(b) ],'半濁音','official-basic',{reading:v,source:'日本点字委員会「点字を読んでみよう！」'}));
+const yoon={'きゃ':'き','きゅ':'き','きょ':'き','しゃ':'し','しゅ':'し','しょ':'し','ちゃ':'ち','ちゅ':'ち','ちょ':'ち','にゃ':'に','にゅ':'に','にょ':'に','ひゃ':'ひ','ひゅ':'ひ','ひょ':'ひ','みゃ':'み','みゅ':'み','みょ':'み','りゃ':'り','りゅ':'り','りょ':'り'};
+Object.entries(yoon).forEach(([v,b])=>{const tail=v.slice(-1);const ok=tail==='ゃ'||tail==='ゅ'||tail==='ょ'; if(ok)add(v,[[4],base.get(b)],'拗音','official-basic',{reading:v,source:'日本点字委員会「点字を読んでみよう！」'});});
+// 基本的な数字・体系切替符号。数字の各マスはアルファベットa-jの点形を使用。
+[['数符',[3,4,5,6]],['外字符',[5,6]],['大文字符',[4,6]],['第1つなぎ符',[3,6]]].forEach(x=>add(x[0],x[1],'体系切替・符号','official-basic',{source:'日本点字委員会「日本点字表記法2018年版」／「点字を読んでみよう！」'}));
+const nums={'1':[1],'2':[1,2],'3':[1,4],'4':[1,4,5],'5':[1,5],'6':[1,2,4],'7':[1,2,4,5],'8':[1,2,5],'9':[2,4],'0':[2,4,5]};
+Object.entries(nums).forEach(([n,d])=>add(n,d,'数字','official-basic',{reading:n,source:'日本点字委員会「点字を読んでみよう！」'}));
+const E=kana.map((e,i)=>({...e,id:'BR-'+String(i+1).padStart(4,'0')}));
+function renderCameraRecognizable(){const box=document.getElementById('cameraRecognizable');if(!box)return;const order=['基本かな','濁音','半濁音','拗音','数字','体系切替・符号'];box.innerHTML=order.map(cat=>{const a=E.filter(e=>e.category===cat);if(!a.length)return '';return '<div><b>'+esc(cat)+'：</b> '+a.map(e=>esc(e.label)).join('・')+'</div>';}).join('')+'<div class="small" style="margin-top:6px">登録項目数：'+E.length+'件</div>'; }
+renderCameraRecognizable();
+let selected=null, lexicon=[], lexFormat='';
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function br(cells,big){return '<span class="br '+(big?'big':'')+'">'+cells.map(c=>{const set=new Set(c);return [1,2,3,4,5,6].map(n=>'<i class="dot '+(set.has(n)?'on':'')+'"></i>').join('')}).join('')+'</span>'}
+function keyCells(cells){return cells.map(c=>c.slice().sort((a,b)=>a-b).join('')).join('|')}
+function render(){const q=document.getElementById('q').value.toLowerCase(),c=document.getElementById('cat').value,g=document.getElementById('grid');g.innerHTML='';E.filter(e=>(!c||e.category===c)&&(!q||[e.label,e.reading,e.category,e.cells.flat().join('')].join(' ').toLowerCase().includes(q))).forEach(e=>{const b=document.createElement('button');b.className='card';b.innerHTML=br(e.cells)+'<span class="lab">'+esc(e.label)+'</span><span class="meta">'+e.category+'</span>';b.onclick=()=>{e._el=b;show(e)};g.appendChild(b)})}
+function show(e){selected=e;document.getElementById('lensbox').innerHTML=br(e.cells,true);document.getElementById('lensmeta').textContent=e.label+'　'+e.cells.length+'マス　'+e.cells.map(c=>'['+c.join(',')+']').join(' ');document.querySelectorAll('.card').forEach(x=>x.classList.remove('selected'));if(e._el)e._el.classList.add('selected');document.getElementById('d').innerHTML=br(e.cells,true)+'<div class="kv"><b>項目</b><span>'+esc(e.label)+'</span><b>読み</b><span>'+esc(e.reading)+'</span><b>マス数</b><span>'+e.cells.length+'</span><b>点番号</b><span>'+e.cells.map(c=>'['+c.join(',')+']').join(' ')+'</span><b>状態</b><span>'+esc(e.status)+'</span><b>出典</b><span>'+esc(e.source)+'</span></div>';document.getElementById('ed').value+=(document.getElementById('ed').value?' ':'')+e.label}
+function validate(){const exact=new Set(),shape=new Map(),err=[];E.forEach(e=>{const k=e.label+'|'+keyCells(e.cells);if(exact.has(k))err.push('完全重複：'+e.label);exact.add(k);const sk=keyCells(e.cells);if(!shape.has(sk))shape.set(sk,[]);shape.get(sk).push(e.label);e.cells.forEach(c=>{if(!c.length||c.some(n=>n<1||n>6)||new Set(c).size!==c.length)err.push('構造異常：'+e.label)})});const same=[...shape.values()].filter(a=>a.length>1);const official=E.filter(e=>e.status==='official-basic').length;const pending=E.length-official;document.getElementById('rep').innerHTML='<div class="status '+(err.length?'err':'ok')+'">構造検証：'+(err.length?err.length+'件':'OK')+'</div><div class="status warn">同一点パターン：'+same.length+'グループ。これは自動的に完全重複とは扱いません。</div><div class="small">点字項目：'+E.length+'件 ／ 基本かな：'+official+'件 ／ 要照合：'+pending+'件</div>'}
+function speak(t){
+  const text=String(t??'').trim();
+  const st=document.getElementById('speakStatus');
+  if(!('speechSynthesis' in window)){if(st)st.textContent='読み上げ：このブラウザは音声読み上げに対応していません';return false;}
+  if(!text){if(st)st.textContent='読み上げ：読む文字がありません';return false;}
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang='ja-JP'; u.rate=0.95; u.pitch=1;
+  const voices=speechSynthesis.getVoices();
+  const ja=voices.find(v=>/^ja(-|_)/i.test(v.lang));
+  if(ja)u.voice=ja;
+  u.onstart=()=>{if(st)st.textContent='読み上げ：再生中　「'+text+'」'};
+  u.onend=()=>{if(st)st.textContent='読み上げ：完了'};
+  u.onerror=()=>{if(st)st.textContent='読み上げ：音声再生でエラーが発生しました'};
+  speechSynthesis.speak(u); return true;
+}
+if('speechSynthesis' in window) speechSynthesis.onvoiceschanged=()=>{};
+function stopSpeak(){if('speechSynthesis' in window)speechSynthesis.cancel();const st=document.getElementById('speakStatus');if(st)st.textContent='読み上げ：停止';}
+function getReadAloudText(){
+  if(window._brailleReadAloudText && /[ぁ-んァ-ヶー]/.test(window._brailleReadAloudText)) return window._brailleReadAloudText;
+  // 読み上げ対象は日本語の「読み込み結果」を優先する。
+  // 入力欄は別ボタンでも読めるため、ここでは読み込んだ点字→かな結果を先に探す。
+  const notation=document.getElementById('v410NotationResult')?.innerText.trim();
+  if(notation && !/^カメラ解析後に/.test(notation)){
+    const m=notation.match(/(?:→|：)\s*([ぁ-んァ-ヶーゔゐゑをん、。！？「」『』・]+)\s*$/);
+    if(m && m[1]) return m[1];
+    const only=notation.replace(/^.*?(?:→|：)\s*/,'').trim();
+    if(/[ぁ-んァ-ヶー]/.test(only)) return only;
+  }
+  const cand=document.getElementById('cand')?.innerText.trim();
+  if(cand && !/^一致する点字項目はありません/.test(cand)){
+    const m=cand.match(/点字表記候補：([^\n]+)/);
+    if(m){
+      const t=m[1].split(' / ').map(x=>x.trim()).filter(x=>/[ぁ-んァ-ヶー]/.test(x)).join('、');
+      if(t)return t;
+    }
+  }
+  if(selected?.reading)return String(selected.reading).trim();
+  if(selected?.label)return String(selected.label).trim();
+  return '';
+}
+function speakCurrent(){
+  const text=getReadAloudText();
+  const st=document.getElementById('speakStatus');
+  if(!text){
+    if(st)st.textContent='読み上げ：読む日本語がありません。点字一覧から文字を選ぶか、入力文を入れてください。';
+    return false;
+  }
+  return speak(text);
+}
+function normalizeLexEntry(x){if(!x)return null;const head=Array.isArray(x.headword)?x.headword[0]:x.headword||x.keb||x.word||x.見出し;const reading=Array.isArray(x.reading)?x.reading[0]:x.reading||x.reb||x.yomi||x.読み;const pos=Array.isArray(x.pos)?x.pos.join('・'):x.pos||x.品詞||'';const gloss=Array.isArray(x.gloss)?x.gloss.join(' / '):x.gloss||x.meaning||x.意味||'';if(!head&&!reading)return null;return {headword:String(head||''),reading:String(reading||''),pos:String(pos||''),gloss:String(gloss||''),id:String(x.id||x.ent_seq||'')};}
+function parseJmdictXML(text){const xml=new DOMParser().parseFromString(text,'application/xml');if(xml.querySelector('parsererror'))throw new Error('XMLを解析できません');const out=[];xml.querySelectorAll('entry').forEach(en=>{const id=en.querySelector('ent_seq')?.textContent.trim()||'';const ks=[...en.querySelectorAll(':scope > k_ele > keb')].map(x=>x.textContent.trim());const rs=[...en.querySelectorAll(':scope > r_ele > reb')].map(x=>x.textContent.trim());const poss=[...en.querySelectorAll(':scope > sense > pos')].map(x=>x.textContent.trim());const gloss=[...en.querySelectorAll(':scope > sense > gloss')].map(x=>x.textContent.trim());const heads=ks.length?ks:[''];(heads.length?heads:['']).forEach(h=>rs.forEach(r=>out.push({headword:h,reading:r,pos:poss,gloss,id})));});return out.map(normalizeLexEntry).filter(Boolean)}
+function parseJSON(text){const j=JSON.parse(text);const arr=Array.isArray(j)?j:(j.entries||j.words||j.data||[]);return arr.map(normalizeLexEntry).filter(Boolean)}
+function parseTSV(text){return text.split(/\r?\n/).map(line=>line.trim()).filter(Boolean).map(line=>{const a=line.split('\t');return normalizeLexEntry({headword:a[0],reading:a[1],pos:a[2],gloss:a.slice(3).join(' / ')})}).filter(Boolean)}
+function loadLex(text,name){let data;if(/\.xml$/i.test(name)) {data=parseJmdictXML(text);lexFormat='JMdict XML';} else if(/\.json$/i.test(name)){data=parseJSON(text);lexFormat='JSON';} else {data=parseTSV(text);lexFormat='TSV';}lexicon=data;document.getElementById('ds').className='status ok';document.getElementById('ds').textContent='一般日本語辞書：読み込み済み（'+lexFormat+'）';document.getElementById('lexstat').textContent='語彙候補：'+lexicon.length.toLocaleString()+'件';renderLex();}
+function renderLex(){const q=document.getElementById('lq').value.trim().toLowerCase(),box=document.getElementById('lex');if(!lexicon.length){box.innerHTML='<div class="small">辞書ファイルを読み込むとここに候補を表示します。</div>';return}const a=lexicon.filter(x=>!q||[x.headword,x.reading,x.pos,x.gloss].join(' ').toLowerCase().includes(q)).slice(0,100);box.innerHTML='<div class="small">表示：'+a.length+'件（最大100件）</div>'+a.map(x=>'<div style="border-top:1px solid #ddd;padding:6px 0"><b>'+esc(x.headword)+'</b>　'+esc(x.reading)+'<br><span class="small">'+esc(x.pos)+' '+esc(x.gloss)+'</span></div>').join('');}
+function parseSeq(s){
+  return s.split('|').map(x=>x.trim()).filter(Boolean).map(x=>{
+    const a=x.split(',').map(Number);
+    if(!a.length || a.some(n=>!Number.isInteger(n)||n<1||n>6||new Set(a).size!==a.length)) throw new Error('点番号は1〜6の重複しない番号で入力してください');
+    return a.sort((a,b)=>a-b);
+  });
+}
+function brailleCandidates(seq){
+  const target=seq.map(c=>c.slice().sort((a,b)=>a-b));
+  return E.filter(e=>e.cells.length===target.length &&
+    e.cells.every((c,j)=>c.slice().sort((a,b)=>a-b).join(',')===target[j].join(',')));
+}
+function decodeSequence(){
+  const box=document.getElementById('cand');
+  try{
+    const seq=parseSeq(document.getElementById('seq').value);
+    if(!seq.length) throw new Error('点字列を入力してください');
+    const candidates=brailleCandidates(seq);
+    const labels=candidates.map(e=>e.label);
+    let lex=[];
+    if(labels.length && lexicon.length){
+      const readings=new Set(candidates.map(e=>e.reading));
+      lex=lexicon.filter(x=>readings.has(x.reading)).slice(0,50);
+    }
+    box.innerHTML=
+      '<div class="status '+(candidates.length?'ok':'warn')+'">'+
+      (candidates.length?'点字表記候補：'+labels.map(esc).join(' / '):'一致する点字項目はありません')+
+      '</div>'+
+      (lexicon.length
+        ? '<div class="small">一般辞書との読み照合：'+(lex.length?lex.length+'件':'該当なし')+'</div>'+
+          lex.map(x=>'<div style="border-top:1px solid #ddd;padding:6px 0"><b>'+esc(x.headword)+'</b>　'+esc(x.reading)+'<br><span class="small">'+esc(x.pos)+' '+esc(x.gloss)+'</span></div>').join('')
+        : '<div class="small">一般日本語辞書を読み込むと、候補かなの読みを辞書と照合します。</div>');
+  }catch(e){
+    box.innerHTML='<div class="status err">照合エラー：'+esc(e.message)+'</div>';
+  }
+}
+document.getElementById('decode').onclick=decodeSequence;
+document.getElementById('q').oninput=render;document.getElementById('cat').onchange=render;document.getElementById('val').onclick=validate;document.getElementById('sp').onclick=speakCurrent;document.getElementById('st').onclick=()=>{const t=document.getElementById('ed').value.trim(); if(t)speak(t); else {document.getElementById('speakStatus').textContent='読み上げ：入力文がありません。';}};document.getElementById('camSpeak').onclick=()=>{const t=getReadAloudText(); if(t) speak(t); else {const st=document.getElementById('speakStatus'); if(st)st.textContent='読み上げ：読み込み結果に日本語がありません。点字→かなの結果を表示してから押してください。';}};document.getElementById('camSpeakStop').onclick=stopSpeak;document.getElementById('cl').onclick=()=>document.getElementById('ed').value='';document.getElementById('lq').oninput=renderLex;
+document.getElementById('df').onchange=async ev=>{const f=ev.target.files[0];if(!f)return;try{const t=await f.text();loadLex(t,f.name)}catch(e){document.getElementById('ds').className='status err';document.getElementById('ds').textContent='辞書読み込みエラー：'+e.message}};
+const cs=document.getElementById('cat');[...new Set(E.map(e=>e.category))].forEach(x=>{const o=document.createElement('option');o.value=x;o.textContent=x;cs.appendChild(o)});render();
+renderCameraRecognizable();renderLex();validate();
+
+// V4.10 スマホ点字カメラ
+(function(){
+  const video=document.getElementById('camVideo'), canvas=document.getElementById('camCanvas');
+  const status=document.getElementById('camStatus'), result=document.getElementById('camResult');
+  let stream=null,shotReady=false; const shotBase=document.createElement('canvas');
+  const setStatus=t=>status.textContent=t;
+  async function startCam(){try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});video.srcObject=stream;setStatus('カメラ起動中');}catch(e){setStatus('カメラを起動できませんでした');}}
+  function shot(){if(!stream){setStatus('先にカメラを開始してください');return;}canvas.width=video.videoWidth||1280;canvas.height=video.videoHeight||720;shotBase.width=canvas.width;shotBase.height=canvas.height;shotBase.getContext('2d').drawImage(video,0,0,canvas.width,canvas.height);shotReady=true;roi=null;drawCanvasWithROI();setStatus('撮影済み。点字が写っている範囲をドラッグして選択してください');}
+  function stopCam(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}setStatus('カメラ停止');}
+  let roi=null, roiDrag=null;
+  function canvasPoint(ev){const r=canvas.getBoundingClientRect();return {x:(ev.clientX-r.left)*canvas.width/r.width,y:(ev.clientY-r.top)*canvas.height/r.height};}
+  function drawCanvasWithROI(){if(!shotReady)return;const ctx=canvas.getContext('2d');ctx.clearRect(0,0,canvas.width,canvas.height);ctx.drawImage(shotBase,0,0);if(!roi)return;ctx.save();ctx.fillStyle='rgba(0,0,0,.48)';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.clearRect(roi.x,roi.y,roi.w,roi.h);ctx.drawImage(shotBase,roi.x,roi.y,roi.w,roi.h,roi.x,roi.y,roi.w,roi.h);ctx.strokeStyle='#00aa00';ctx.lineWidth=Math.max(4,canvas.width/400);ctx.strokeRect(roi.x,roi.y,roi.w,roi.h);ctx.restore();}
+  canvas.addEventListener('pointerdown',e=>{if(!shotReady)return;const p=canvasPoint(e);roiDrag={x:p.x,y:p.y};canvas.setPointerCapture?.(e.pointerId);});
+  canvas.addEventListener('pointermove',e=>{if(!roiDrag)return;const p=canvasPoint(e);roi={x:Math.min(roiDrag.x,p.x),y:Math.min(roiDrag.y,p.y),w:Math.abs(p.x-roiDrag.x),h:Math.abs(p.y-roiDrag.y)};drawCanvasWithROI();});
+  canvas.addEventListener('pointerup',e=>{if(!roiDrag)return;const p=canvasPoint(e);roi={x:Math.min(roiDrag.x,p.x),y:Math.min(roiDrag.y,p.y),w:Math.abs(p.x-roiDrag.x),h:Math.abs(p.y-roiDrag.y)};roiDrag=null;if(roi.w<20||roi.h<20){roi=null;setStatus('選択範囲が小さすぎます。点字部分を囲んでください。');}else setStatus('点字領域を選択しました。この範囲だけを解析します。');drawCanvasWithROI();});
+  function getROI(w,h){if(!roi||roi.w<20||roi.h<20)return {x:0,y:0,w,h};return {x:Math.max(0,roi.x),y:Math.max(0,roi.y),w:Math.min(w-roi.x,roi.w),h:Math.min(h-roi.y,roi.h)};}
+  
+function detectDots(ctx,w,h){
+    const R=getROI(w,h);
+    const maxW=1600, sc=Math.min(1,maxW/Math.max(1,R.w)), sw=Math.max(1,Math.round(R.w*sc)), sh=Math.max(1,Math.round(R.h*sc));
+    const t=document.createElement('canvas'); t.width=sw; t.height=sh;
+    const tc=t.getContext('2d',{willReadFrequently:true});
+    tc.drawImage(shotBase,R.x,R.y,R.w,R.h,0,0,sw,sh);
+    const pix=tc.getImageData(0,0,sw,sh).data, gray=new Uint8Array(sw*sh);
+    let sum=0;
+    for(let i=0,p=0;i<pix.length;i+=4,p++){const g=Math.round(.299*pix[i]+.587*pix[i+1]+.114*pix[i+2]);gray[p]=g;sum+=g;}
+    const mean=sum/gray.length;
+    // ビットマップ点字用。画像全体の「暗い点」を探すのではなく、
+    // 小さく丸い連結成分を点候補として抽出し、点サイズを画像から自動推定する。
+    const thresholds=[Math.max(30,Math.min(220,mean-18)),Math.max(25,Math.min(200,mean-32)),Math.max(20,Math.min(180,mean-48))];
+    let best=[];
+    for(const threshold of thresholds){
+      const seen=new Uint8Array(sw*sh), q=new Int32Array(sw*sh), comps=[];
+      for(let y=1;y<sh-1;y++)for(let x=1;x<sw-1;x++){
+        const idx=y*sw+x; if(seen[idx]||gray[idx]>threshold) continue;
+        let hd=0,tl=0,n=0,sx=0,sy=0,minX=x,maxX=x,minY=y,maxY=y;
+        q[tl++]=idx;seen[idx]=1;
+        while(hd<tl){
+          const z=q[hd++],cy=Math.floor(z/sw),cx=z-cy*sw; n++;sx+=cx;sy+=cy;
+          if(cx<minX)minX=cx;if(cx>maxX)maxX=cx;if(cy<minY)minY=cy;if(cy>maxY)maxY=cy;
+          for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+            if(!dx&&!dy)continue;const nx=cx+dx,ny=cy+dy;
+            if(nx<1||ny<1||nx>=sw-1||ny>=sh-1)continue;
+            const ni=ny*sw+nx;if(!seen[ni]&&gray[ni]<=threshold){seen[ni]=1;q[tl++]=ni;}
+          }
+        }
+        const bw=maxX-minX+1,bh=maxY-minY+1,area=n, aspect=Math.max(bw,bh)/Math.max(1,Math.min(bw,bh)), fill=area/(bw*bh);
+        if(area<4||bw<2||bh<2||bw>sw*.25||bh>sh*.25||aspect>2.0||fill<.25)continue;
+        comps.push({x:R.x+(sx/n)/sc,y:R.y+(sy/n)/sc,bw:bw/sc,bh:bh/sc,area,score:fill,polarity:'dark'});
+      }
+      if(comps.length){
+        // 点字点は概ね同じ大きさ。極端に小さいゴミ・巨大な塊を除く。
+        const sizes=comps.map(c=>Math.sqrt(c.bw*c.bh)).sort((a,b)=>a-b);
+        const med=sizes[Math.floor(sizes.length/2)];
+        const filtered=comps.filter(c=>{const z=Math.sqrt(c.bw*c.bh);return z>=Math.max(2,med*.35)&&z<=Math.max(4,med*2.4);});
+        const merge=Math.max(2,med*.55);
+        const d=[];
+        filtered.sort((a,b)=>b.score-a.score);
+        for(const c of filtered){if(!d.some(x=>Math.hypot(x.x-c.x,x.y-c.y)<merge))d.push(c);}
+        if(d.length>best.length)best=d;
+      }
+    }
+    best.sort((a,b)=>a.y-b.y||a.x-b.x);
+    if(best.length>180)best=best.slice(0,180);
+    return {dots:best,scale:1};
+  }
+  let lastDots=null,lastScale=1;
+  function drawDots(dots,sc){
+    const ctx=canvas.getContext('2d'); const w=canvas.width;
+    ctx.clearRect(0,0,canvas.width,canvas.height);ctx.drawImage(shotBase,0,0); if(roi){ctx.save();ctx.fillStyle='rgba(0,0,0,.48)';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.clearRect(roi.x,roi.y,roi.w,roi.h);ctx.drawImage(shotBase,roi.x,roi.y,roi.w,roi.h,roi.x,roi.y,roi.w,roi.h);ctx.restore();ctx.strokeStyle='#00aa00';ctx.lineWidth=Math.max(4,w/400);ctx.strokeRect(roi.x,roi.y,roi.w,roi.h);} ctx.save(); ctx.lineWidth=Math.max(2,w/500);
+    ctx.font=Math.max(16,w/850)+'px sans-serif';
+    dots.forEach((d,i)=>{const x=d.x/sc,y=d.y/sc,r=Math.max(6,10/sc);ctx.strokeStyle='#ff0000';ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.stroke();ctx.fillStyle='#ff0000';ctx.fillText(String(i+1),x+r+2,y-2);});ctx.restore();
+  }
+  function analyze(){
+    if(!shotReady){setStatus('先に撮影してください。');return;}
+    const ctx=canvas.getContext('2d',{willReadFrequently:true}), w=canvas.width,h=canvas.height;
+    const found=detectDots(ctx,w,h); lastDots=found.dots; lastScale=found.scale; drawDots(lastDots,lastScale);
+    if(!lastDots.length){result.textContent='確認結果：点候補 0個';setStatus('点候補を検出できませんでした。');return;}
+    // 表示番号は検出順ではなく、点字の固定位置 1,2,3 / 4,5,6 にする。
+    // 検出順が 2,4,5,1,3,6 のようになっても、その順番を番号として表示しない。
+    const ys=lastDots.map(d=>d.y).sort((a,b)=>a-b);
+    const xs=lastDots.map(d=>d.x).sort((a,b)=>a-b);
+    const medArr=a=>a.length?a[Math.floor(a.length/2)]:0;
+    const yMid=medArr(ys);
+    const xMid=medArr(xs);
+    const yTol=Math.max((Math.max(...lastDots.map(d=>d.bh||1))*1.5),6);
+    const xTol=Math.max((Math.max(...lastDots.map(d=>d.bw||1))*1.5),6);
+    const rowY=[ys[0],yMid,ys[ys.length-1]];
+    const colX=[xs[0],xMid];
+    const displayNo=d=>{
+      const ri=rowY.reduce((bi,y,i)=>Math.abs(d.y-y)<Math.abs(d.y-rowY[bi])?i:bi,0);
+      // 1セルの確認表示では左右の代表列を使う。
+      const left=Math.abs(d.x-colX[0])<=Math.abs(d.x-colX[1]);
+      return left?[1,2,3][ri]:[4,5,6][ri];
+    };
+    const list=lastDots.map(d=>`${displayNo(d)}: (${(d.x/lastScale).toFixed(1)}, ${(d.y/lastScale).toFixed(1)}) ${d.polarity==='dark'?'暗':'明'}`).join('　');
+    result.textContent=`確認結果：点候補 ${lastDots.length}個
+${list}`;
+    setStatus('赤丸は検出した点の中心候補です。次はこの座標だけからマス候補を作ります。');
+  }
+  function makeCells(){
+    if(!shotReady){setStatus('先に撮影してください。');return;}
+    if(!lastDots){analyze(); if(!lastDots||!lastDots.length)return;}
+    const pts=lastDots.map((d,i)=>({x:d.x,y:d.y,i,bw:d.bw||1,bh:d.bh||1}));
+    if(!pts.length){setStatus('点がありません。');return;}
+    const med=a=>{a=a.filter(Number.isFinite).sort((x,y)=>x-y);return a.length?a[Math.floor(a.length/2)]:1;};
+    const dotSize=med(pts.map(p=>Math.sqrt(p.bw*p.bh)));
+    const tolY=Math.max(dotSize*1.25,6);
+
+    // 3段の基準座標を先に決める。
+    // 「検出された点の順番」を1/2/3にしない。特に 1・3 だけ
+    // 検出された場合は、上下2点の距離から中段を補間し、実点は
+    // 上段=1・下段=3として保持する。
+    const ys=pts.map(p=>p.y).sort((a,b)=>a-b);
+    const rowGroups=[];
+    for(const p of pts.slice().sort((a,b)=>a.y-b.y)){
+      let g=rowGroups.find(r=>Math.abs(p.y-r.cy)<=tolY);
+      if(!g){g={cy:p.y,pts:[]};rowGroups.push(g);}
+      g.pts.push(p); g.cy=med(g.pts.map(q=>q.y));
+    }
+    rowGroups.sort((a,b)=>a.cy-b.cy);
+    let rowCenters=[];
+    const R=getROI(canvas.width,canvas.height);
+    if(rowGroups.length>=3){
+      while(rowGroups.length>3){
+        let bi=0,bg=Infinity;
+        for(let i=0;i<rowGroups.length-1;i++){const gg=rowGroups[i+1].cy-rowGroups[i].cy;if(gg<bg){bg=gg;bi=i;}}
+        rowGroups[bi].pts.push(...rowGroups[bi+1].pts);
+        rowGroups[bi].cy=med(rowGroups[bi].pts.map(q=>q.y));
+        rowGroups.splice(bi+1,1);
+      }
+      rowCenters=rowGroups.map(g=>g.cy);
+    }else if(rowGroups.length===2){
+      const y0=rowGroups[0].cy, y1=rowGroups[1].cy, gap=y1-y0;
+      // 2段分の間隔なら、観測点は1段目と3段目。
+      // ここを 1,2 として数えない。
+      if(gap >= Math.max(dotSize*1.65, tolY*2.0)){
+        const step=gap/2;
+        rowCenters=[y0,y0+step,y1];
+      }else{
+        // 1段欠けている場合は、ROI内で最も自然な3段格子を選ぶ。
+        const step=Math.max(gap,dotSize*1.7);
+        const topCandidate=[y0,y0+step,y0+2*step];
+        const bottomCandidate=[y1-2*step,y1-step,y1];
+        const topMargin=Math.abs((R.y+R.h)-topCandidate[2]);
+        const bottomMargin=Math.abs(bottomCandidate[0]-R.y);
+        rowCenters=(topMargin>=bottomMargin)?topCandidate:bottomCandidate;
+      }
+    }else if(rowGroups.length===1){
+      // 1段しかない場合は、ROI中央を基準に3段格子を置く。
+      const step=Math.max(dotSize*1.7, R.h/6);
+      const cy=rowGroups[0].cy;
+      let base=cy;
+      if(cy-step>=R.y && cy+step<=R.y+R.h) base=cy;
+      else if(cy+2*step<=R.y+R.h) base=cy+step;
+      else if(cy-2*step>=R.y) base=cy-step;
+      rowCenters=[base-step,base,base+step];
+    }else{
+      setStatus('縦方向の点字位置を確定できません。');return;
+    }
+    // 各検出点を「上・中・下」の固定座標へ割り当てる。
+    const rows=rowCenters.map(cy=>({cy,pts:[]}));
+    for(const p of pts){
+      let ri=0,rd=Infinity;
+      rowCenters.forEach((cy,i)=>{const dd=Math.abs(p.y-cy);if(dd<rd){rd=dd;ri=i;}});
+      if(rd<=Math.max(dotSize*1.35, tolY*1.25)) rows[ri].pts.push(p);
+    }
+
+    // X列をクラスタ化。
+    const tolX=Math.max(dotSize*1.25,6), xcols=[];
+    for(const p of pts.slice().sort((a,b)=>a.x-b.x)){
+      let g=xcols.find(z=>Math.abs(p.x-z.cx)<=tolX);
+      if(!g){g={cx:p.x,pts:[]};xcols.push(g);} g.pts.push(p); g.cx=med(g.pts.map(q=>q.x));
+    }
+    xcols.sort((a,b)=>a.cx-b.cx);
+    if(!xcols.length){setStatus('横位置を確定できません。');return;}
+
+    // 「開始位置」を黒点の最左端から決めない。
+    // 近接する2列を探し、その2列を1マスの左列/右列アンカーにする。
+    const gaps=xcols.slice(1).map((g,i)=>({gap:g.cx-xcols[i].cx,i})).filter(z=>z.gap>0);
+    const minGap=gaps.length?Math.min(...gaps.map(z=>z.gap)):0;
+    const pairLimit=minGap?minGap*1.45:0;
+    let anchor=null;
+    if(pairLimit){
+      const pair=gaps.filter(z=>z.gap<=pairLimit).sort((a,b)=>a.gap-b.gap)[0];
+      if(pair) anchor={left:xcols[pair.i].cx,right:xcols[pair.i+1].cx,d:pair.gap};
+    }
+    // 複数の完全マスがある場合は、最も多く点を含む近接2列をアンカーにする。
+    for(let i=0;i<xcols.length-1;i++){
+      const gap=xcols[i+1].cx-xcols[i].cx;
+      if(gap<=pairLimit && (!anchor || (xcols[i].pts.length+xcols[i+1].pts.length)>(xcols.find(z=>z.cx===anchor.left)?.pts.length||0)+(xcols.find(z=>z.cx===anchor.right)?.pts.length||0)))
+        anchor={left:xcols[i].cx,right:xcols[i+1].cx,d:gap};
+    }
+    if(!anchor){
+      setStatus('点字マスの左右2列を確定できません。点字領域全体を選択してください。');
+      result.textContent='確認結果：左右列の基準を確定できません。\n黒点の検出と6点位置の判定を分離しました。';
+      return;
+    }
+
+    // アンカーから点字マスの周期を推定する。セル内列間隔 d と、次セルまでの周期を分離する。
+    const d=anchor.d;
+    const expectedCellPitch=Math.max(d*2.2,d+dotSize*2);
+    const allX=xcols.map(g=>g.cx);
+    // アンカー左列を「セル0の左列」とする。ただし、左側に同周期で存在する列があればそこまで戻す。
+    let origin=anchor.left;
+    let guard=0;
+    while(guard++<100){
+      const candidate=origin-expectedCellPitch;
+      const hit=allX.find(x=>Math.abs(x-candidate)<=d*.35);
+      if(hit==null)break;
+      origin=hit;
+    }
+    // 右側も同じ格子に乗る列だけを採用する。
+    const colInfo=new Map();
+    for(const g of xcols){
+      const rel=g.cx-origin;
+      const n=Math.round(rel/expectedCellPitch);
+      const leftX=origin+n*expectedCellPitch;
+      const rightX=leftX+d;
+      const dl=Math.abs(g.cx-leftX), dr=Math.abs(g.cx-rightX);
+      const lim=Math.max(d*.42,dotSize*.9);
+      if(Math.min(dl,dr)<=lim){
+        const side=dl<=dr?'L':'R';
+        const key=n+':'+side;
+        colInfo.set(key,{...g,cell:n,side,cx:g.cx});
+      }
+    }
+    const cellIds=[...new Set([...colInfo.values()].map(g=>g.cell))].sort((a,b)=>a-b);
+    const codes=[],cellBoxes=[];
+    for(const ci of cellIds){
+      const cols=[...colInfo.values()].filter(g=>g.cell===ci).sort((a,b)=>a.cx-b.cx);
+      if(!cols.length)continue;
+      const out=[];
+      for(const col of cols){
+        for(const p of col.pts){
+          let ri=0,rd=Infinity;
+          rows.forEach((r,i)=>{const dd=Math.abs(p.y-r.cy);if(dd<rd){rd=dd;ri=i;}});
+          const rowStep=Math.max(dotSize*1.2,6);
+          if(rd<=rowStep*1.6){
+            const dot=col.side==='L'?[1,2,3][ri]:[4,5,6][ri];
+            if(!out.includes(dot))out.push(dot);
+          }
+        }
+      }
+      out.sort((a,b)=>a-b);
+      if(out.length){codes.push(out);cellBoxes.push({cell:ci,cols,code:out});}
+    }
+    if(!codes.length){setStatus('点字マスを作成できませんでした。');return;}
+
+    // 可視化：推定した「開始位置」と6点グリッドを表示する。
+    const ctx=canvas.getContext('2d'); ctx.clearRect(0,0,canvas.width,canvas.height); ctx.drawImage(shotBase,0,0);
+    if(roi){ctx.save();ctx.fillStyle='rgba(0,0,0,.48)';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.clearRect(roi.x,roi.y,roi.w,roi.h);ctx.drawImage(shotBase,roi.x,roi.y,roi.w,roi.h,roi.x,roi.y,roi.w,roi.h);ctx.restore();}
+    ctx.save(); ctx.lineWidth=Math.max(3,canvas.width/350); ctx.font=Math.max(18,canvas.width/700)+'px sans-serif';
+    cellBoxes.forEach((b,k)=>{
+      const xs=b.cols.map(g=>g.cx), minX=Math.min(...xs),maxX=Math.max(...xs);
+      const minY=rows[0].cy,maxY=rows[2].cy;
+      const leftX=origin+b.cell*expectedCellPitch;
+      ctx.strokeStyle='#00aa00'; ctx.strokeRect(leftX-18,minY-20,Math.max(36,d+36),Math.max(40,maxY-minY+40));
+      ctx.fillStyle='#008800'; ctx.fillText('M'+(k+1)+' ['+b.code.join(',')+']',leftX-8,minY-24);
+      [[1,leftX,minY],[2,leftX,rows[1].cy],[3,leftX,maxY],[4,leftX+d,minY],[5,leftX+d,rows[1].cy],[6,leftX+d,maxY]].forEach(v=>{ctx.fillStyle='#0055aa';ctx.fillText(String(v[0]),v[1]-5,v[2]-10);});
+    });
+    ctx.restore();
+    const japanese=window.brailleDecodeCells?window.brailleDecodeCells(codes):'';
+    result.textContent=`読み込み結果：${japanese||'未確定'}\n点字コード：${codes.map(c=>`[${c.join(',')}]`).join(' ')}\n開始基準：左列の最初の格子位置をアンカーから算出\n検出点：${pts.length}個 / マス候補：${codes.length}個`;
+    setStatus(japanese?'6点位置を確定して日本語へ変換しました。':'6点位置を確定しました。日本語として確定できないコードは未確定です。');
+    window._brailleReadAloudText=japanese||'';
+  }
+
+  document.getElementById('camStart').onclick=startCam;document.getElementById('camShot').onclick=shot;document.getElementById('camStop').onclick=stopCam;document.getElementById('camAnalyze').onclick=analyze;document.getElementById('camCells').onclick=makeCells;window.addEventListener('beforeunload',stopCam);
+})();
+
+</script>
+
+
+<script>
+/* V4.10 FIX: 日本語点字表記デコーダー
+   点番号は 1,2,3 / 4,5,6。多セル表記はセル配列として扱う。
+*/
+(function(){
+  // 画面の点字一覧と同じ辞書をデコーダーにも使用する。
+  // これにより、一覧に表示しているビットマップと認識結果の対応を一本化する。
+  const SINGLE = new Map();
+  const MULTI = new Map();
+  if(typeof kana!=='undefined'){
+    kana.forEach(e=>{
+      const k=e.cells.map(c=>c.slice().sort((a,b)=>a-b).join('')).join('|');
+      if(e.cells.length===1) SINGLE.set(k,e.label);
+      else MULTI.set(k,e.label);
+    });
+  }
+  const YOON = {};
+  const DAKUTEN = '5';
+  const HANDAKUTEN = '6';
+  function key(cell){return [...cell].map(Number).sort((a,b)=>a-b).join('');}
+  function decode(cells){
+    const ks=cells.map(key), out=[];
+    for(let i=0;i<ks.length;i++){
+      if(i+1<ks.length){
+        const mk=ks[i]+'|'+ks[i+1];
+        if(MULTI.has(mk)){out.push(MULTI.get(mk));i++;continue;}
+      }
+      if(ks[i]===DAKUTEN && i+1<ks.length){
+        const b=SINGLE.get(ks[i+1]);
+        const v={'か':'が','き':'ぎ','く':'ぐ','け':'げ','こ':'ご','さ':'ざ','し':'じ','す':'ず','せ':'ぜ','そ':'ぞ','た':'だ','ち':'ぢ','つ':'づ','て':'で','と':'ど','は':'ば','ひ':'び','ふ':'ぶ','へ':'べ','ほ':'ぼ'}[b];
+        if(v){out.push(v);i++;continue;}
+      }
+      if(ks[i]===HANDAKUTEN && i+1<ks.length){
+        const b=SINGLE.get(ks[i+1]);
+        const v={'は':'ぱ','ひ':'ぴ','ふ':'ぷ','へ':'ぺ','ほ':'ぽ'}[b];
+        if(v){out.push(v);i++;continue;}
+      }
+      out.push(SINGLE.get(ks[i])||'〔'+ks[i]+'〕');
+    }
+    return out.join('');
+  }
+  window.brailleDecodeCells=decode;
+
+  window.BrailleNotationV410 = {
+    basic:BASIC,
+    yoon:YOON,
+    decode:decode,
+    key:key
+  };
+
+  // UI test/display: expose exact point-cell definitions for the three requested forms.
+  window.BrailleNotationV410Examples = {
+    "にゃ": [[4],[1,2,3]],
+    "にゅ": [[4],[1,2,3,4]],
+    "にょ": [[4],[2,3,4]]
+  };
+})();
+</script>
+
+</body></html>
