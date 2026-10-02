@@ -1,0 +1,114 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>やさしい点字ワープロ V7</title><style>body{font-family:system-ui,'Yu Gothic',sans-serif;margin:0;background:#f3f5f7;color:#18212b}header{background:#18212b;color:#fff;padding:16px}main{max-width:1100px;margin:auto;padding:14px}.card{background:#fff;border:1px solid #d5dbe1;border-radius:12px;padding:14px;margin-bottom:14px}textarea,input,button{font-size:16px;padding:9px;border-radius:8px;border:1px solid #9aa6b2}textarea{width:100%;min-height:90px;box-sizing:border-box}.primary{background:#18212b;color:#fff}.row{display:flex;flex-wrap:wrap;gap:8px}.cell{border:1px solid #d7dde3;border-radius:9px;padding:7px;text-align:center;min-width:70px}.braille{width:42px;height:62px;position:relative;margin:3px auto}.dot{position:absolute;width:10px;height:10px;border:1px solid #777;border-radius:50%}.on{background:#111}.d1{left:5px;top:1px}.d2{left:5px;top:25px}.d3{left:5px;top:49px}.d4{right:5px;top:1px}.d5{right:5px;top:25px}.d6{right:5px;top:49px}.points{font-family:monospace;font-size:12px}.ok{color:#176b3a}.warn{color:#9a5a00}.bad{color:#a00000}.small{font-size:13px;color:#52606d}</style>
+<style>
+#camVideo,#camCanvas{max-width:100%;border:1px solid #9aa6b2;border-radius:8px;background:#111}
+#camWrap{position:relative;display:inline-block;max-width:100%;cursor:crosshair}
+#camCanvas{display:block}
+#camSelect{position:absolute;border:2px dashed #fff;pointer-events:none;display:none}
+.camgrid{font-family:monospace;white-space:pre;font-size:18px}
+</style>
+</head><body><header><h1>やさしい点字ワープロ V7</h1><div>標準点字辞書を読み込んで利用する方式</div></header><main>
+<section class="card"><h2>1. 標準点字辞書</h2><p>アプリ独自の点字辞書は内蔵しません。利用者が用意した標準・一般的な点字辞書を読み込みます。</p><input id="file" type="file" accept=".json,.csv,.txt"><button class="primary" onclick="loadDict()">辞書を読み込む</button><p id="status" class="small">未読み込み</p></section>
+<section class="card"><h2>2. 入力</h2><textarea id="input">こんにちは。</textarea><br><button class="primary" onclick="convert()">点字に変換</button> <button onclick="speak()">入力を読み上げ</button> <button onclick="clearAll()">消去</button><p id="msg" class="small"></p></section>
+<section class="card"><h2>3. 点字表示</h2><div id="result" class="row"></div></section>
+<section class="card"><h2>4. 読み込んだ辞書</h2><div id="dictInfo" class="small">未読み込み</div><div id="dict" class="row"></div></section>
+<section class="card"><h2>5. 辞書検証</h2><button onclick="validateDict()">構造を検証</button><div id="report"></div></section>
+<section class="card"><h2>6. 基準</h2><p>日本点字委員会「日本点字表記法2018年版」を基準資料とし、アプリ内で独自の対応表を生成・補完しません。</p><p class="small">点番号：1・2・3＝左列、4・5・6＝右列。複数マスは「4+16」のように表現します。</p></section>
+<section class="card"><h2>7. スマホカメラで点字を読む</h2><p>スマホのカメラで点字を撮影し、選択した<strong>1マス</strong>を読み込んだ辞書と照合します。辞書に登録された文字だけを結果にします。</p><div class="row"><button class="primary" onclick="startCamera()">カメラ開始</button><button onclick="captureCamera()">撮影</button><button onclick="stopCamera()">停止</button><label> 認識マス数 <input id="camCells" type="number" min="1" max="20" value="2" style="width:60px"></label><button onclick="recognizeSelectedCells()">選択範囲を連続認識</button><button class="primary" onclick="autoRecognizeSelectedCells()">マス数を自動推定して認識</button><button onclick="cameraFullPipeline()">撮影→自動認識→読み上げ</button></div><p id="camStatus" class="small">カメラ未起動</p><div id="camWrap"><video id="camVideo" autoplay playsinline muted style="display:block"></video><canvas id="camCanvas" style="display:none"></canvas><div id="camSelect"></div></div><pre id="camResult" class="camgrid"></pre><p id="camSpeech" class="small"></p></section>
+</main><script>
+let camStream=null,camImage=null,sel=null,dragging=false,dragStart=null;
+let dict=[],map=new Map(),reverseMap=new Map();
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function normDots(v){v=String(v??'').trim().replace(/[①②③④⑤⑥]/g,x=>({'①':'1','②':'2','③':'3','④':'4','⑤':'5','⑥':'6'}[x]));let cells=v.split('+');if(!v)return '';for(const c of cells){if(!/^[1-6]+$/.test(c)||new Set(c).size!==c.length)return ''}return cells.join('+')}
+function entry(x){let label=String(x.label??x.char??x.character??x.text??'').trim(),dots=normDots(x.dots??x.points??x.pattern);return label&&dots?{label,dots,category:String(x.category??'')}:null}
+async function loadDict(){let f=document.getElementById('file').files[0];if(!f){document.getElementById('status').textContent='辞書ファイルを選択してください。';return}try{let t=(await f.text()).replace(/^\uFEFF/,'').trim(),a=[];if(f.name.toLowerCase().endsWith('.json')||t[0]=='{'||t[0]=='['){let j=JSON.parse(t);a=(Array.isArray(j)?j:j.entries||[]).map(entry).filter(Boolean)}else{for(let l of t.split(/\r?\n/)){if(!l.trim()||l.trim().startsWith('#'))continue;let p=l.split(/[,;\t]/);let e=entry({label:p[0],dots:p[1],category:p[2]});if(e)a.push(e)}}if(!a.length)throw Error('読み込める項目がありません');dict=a;map=new Map(a.map(x=>[x.label,x]));reverseMap=new Map();for(const e of a){const k=e.dots;(reverseMap.has(k)?reverseMap.get(k):reverseMap.set(k,[]).get(k)).push(e.label)}document.getElementById('status').innerHTML='<span class="ok">読み込み済み</span>：'+esc(f.name)+' / '+a.length+'項目';renderDict()}catch(e){dict=[];map.clear();reverseMap.clear();document.getElementById('status').innerHTML='<span class="bad">読み込み失敗</span>：'+esc(e.message)}}
+function draw(p){let s=new Set(p.split('').map(Number));return '<div class="braille">'+[1,2,3,4,5,6].map(i=>'<span class="dot d'+i+' '+(s.has(i)?'on':'')+'"></span>').join('')+'</div>'}
+function cells(p){return p.split('+').map(x=>'<div>'+draw(x)+'<div class="points">'+esc(x)+'</div></div>').join('')}
+function renderDict(){document.getElementById('dictInfo').textContent=dict.length+'項目';document.getElementById('dict').innerHTML=dict.map(e=>'<div class="cell"><b>'+esc(e.label)+'</b>'+cells(e.dots)+'</div>').join('')}
+function convert(){if(!dict.length){document.getElementById('msg').innerHTML='<span class="warn">先に標準点字辞書を読み込んでください。</span>';return}let out='',miss=[];for(let c of [...document.getElementById('input').value]){if(c===' '){out+='<div class="cell">空白</div>';continue}let e=map.get(c);if(!e){miss.push(c);out+='<div class="cell"><b>'+esc(c)+'</b><br><span class="bad">未登録</span></div>'}else out+='<div class="cell"><b>'+esc(c)+'</b>'+cells(e.dots)+'</div>'}document.getElementById('result').innerHTML=out;document.getElementById('msg').innerHTML=miss.length?'<span class="bad">辞書にない文字：'+[...new Set(miss)].map(esc).join('、')+'</span>':'<span class="ok">読み込んだ辞書だけで変換しました。</span>'}
+function validateDict(){if(!dict.length){document.getElementById('report').textContent='辞書未読み込み';return}let labels=new Set(),bad=[],dup=[];dict.forEach((e,i)=>{if(labels.has(e.label))dup.push(e.label);labels.add(e.label);if(!normDots(e.dots))bad.push(i+1)});document.getElementById('report').innerHTML='<p>項目数：'+dict.length+'</p><p>不正な点番号：'+(bad.length?'<span class="bad">'+bad.join(',')+'</span>':'<span class="ok">なし</span>')+'</p><p>重複文字：'+(dup.length?'<span class="warn">'+dup.map(esc).join('、')+'</span>':'<span class="ok">なし</span>')+'</p>'}
+function speak(){let t=document.getElementById('input').value;if(!t){alert('読む文字がありません。');return}speechSynthesis.cancel();let u=new SpeechSynthesisUtterance(t);u.lang='ja-JP';speechSynthesis.speak(u)}
+function clearAll(){document.getElementById('input').value='';document.getElementById('result').innerHTML='';document.getElementById('msg').textContent=''}
+
+async function startCamera(){
+ try{
+  camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});
+  const v=document.getElementById('camVideo');v.srcObject=camStream;
+  document.getElementById('camStatus').textContent='カメラ起動中。点字面を正面から撮影してください。複数マスは横一列で選択できます。';
+ }catch(e){document.getElementById('camStatus').innerHTML='<span class="bad">カメラを開始できません：'+esc(e.message)+'</span>'}
+}
+function captureCamera(){
+ const v=document.getElementById('camVideo'),c=document.getElementById('camCanvas');
+ if(!v.videoWidth){document.getElementById('camStatus').textContent='先にカメラを開始してください。';return}
+ c.width=v.videoWidth;c.height=v.videoHeight;c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+ v.style.display='none';c.style.display='block';camImage=c;document.getElementById('camStatus').textContent='撮影しました。点字範囲をドラッグしてください。';enableSelection();
+}
+function stopCamera(){if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null}document.getElementById('camStatus').textContent='カメラ停止';}
+function enableSelection(){const c=document.getElementById('camCanvas');
+ c.onpointerdown=e=>{dragging=true;const r=c.getBoundingClientRect();dragStart={x:e.clientX-r.left,y:e.clientY-r.top};sel=null};
+ c.onpointermove=e=>{if(!dragging)return;const r=c.getBoundingClientRect();const x=e.clientX-r.left,y=e.clientY-r.top;const x0=Math.min(dragStart.x,x),y0=Math.min(dragStart.y,y),w=Math.abs(x-dragStart.x),h=Math.abs(y-dragStart.y);sel={x:x0/c.clientWidth*c.width,y:y0/c.clientHeight*c.height,w:w/c.clientWidth*c.width,h:h/c.clientHeight*c.height};const box=document.getElementById('camSelect');box.style.display='block';box.style.left=x0+'px';box.style.top=y0+'px';box.style.width=w+'px';box.style.height=h+'px'};
+ c.onpointerup=()=>{dragging=false;if(sel)document.getElementById('camStatus').textContent='選択範囲を確定しました。';};
+}
+function detectCellBits(c,ctx,x0,y0,w,h){
+ const d=ctx.getImageData(Math.round(x0),Math.round(y0),Math.max(1,Math.round(w)),Math.max(1,Math.round(h))).data;
+ const W=Math.max(1,Math.round(w)),H=Math.max(1,Math.round(h));
+ let gray=new Float32Array(W*H),sum=0;
+ for(let y=0;y<H;y++)for(let x=0;x<W;x++){let i=(y*W+x)*4,g=(d[i]+d[i+1]+d[i+2])/3;gray[y*W+x]=g;sum+=g}
+ const avg=sum/gray.length,thr=Math.max(45,Math.min(190,avg*0.72));
+ let bits='';
+ for(let r=0;r<3;r++)for(let q=0;q<2;q++){
+  const cx=(q+.5)*W/2,cy=(r+.5)*H/3,rx=Math.max(2,W/10),ry=Math.max(2,H/14);let hit=0,n=0;
+  for(let yy=Math.max(0,Math.floor(cy-ry));yy<Math.min(H,Math.ceil(cy+ry));yy++)for(let xx=Math.max(0,Math.floor(cx-rx));xx<Math.min(W,Math.ceil(cx+rx));xx++){n++;if(gray[yy*W+xx]<thr)hit++}
+  if(n&&hit/n>=0.22)bits+=(q===0?r+1:4+r);
+ }
+ return {bits,thr};
+}
+function recognizeSelectedCells(){
+ if(!camImage||!sel||sel.w<10||sel.h<10){document.getElementById('camResult').textContent='撮影画像と選択範囲が必要です。';return}
+ if(!dict.length){document.getElementById('camResult').textContent='先に標準点字辞書を読み込んでください。';return}
+ let n=Math.max(1,Math.min(20,parseInt(document.getElementById('camCells').value,10)||1));
+ const ctx=camImage.getContext('2d');let seq=[],labels=[],unknown=[];
+ for(let i=0;i<n;i++){
+  const x=sel.x+sel.w*i/n,w=sel.w/n,r=detectCellBits(camImage,ctx,x,sel.y,w,sel.h),ls=reverseMap.get(r.bits)||[];
+  seq.push(r.bits||'なし');
+  if(ls.length){labels.push(ls[0]);}else{labels.push('');unknown.push(i+1)}
+ }
+ const text=labels.join('');
+ let msg='検出マス数：'+n+'\n点字列：'+seq.join(' | ')+'\n';
+ msg+='かな候補：'+(text||'なし')+'\n';
+ if(unknown.length)msg+='未登録マス：'+unknown.join(', ')+'\n';
+ if(text){
+  document.getElementById('input').value+=text;
+  document.getElementById('camSpeech').innerHTML='<span class="ok">「'+esc(text)+'」を入力欄に追加しました。</span> <button onclick="speakCameraText()">認識結果を読み上げ</button>';
+ }else document.getElementById('camSpeech').textContent='読み上げる文字がありません。';
+ document.getElementById('camResult').textContent=msg;
+}
+function estimateCellCount(){
+ if(!sel||sel.w<20||sel.h<20)return 1;
+ // 点字1マスの概略比率（幅:高さ）を基準に、選択範囲からマス数を推定する。
+ const raw=sel.w/(sel.h*0.82);
+ return Math.max(1,Math.min(20,Math.round(raw)));
+}
+function autoRecognizeSelectedCells(){
+ if(!camImage||!sel||sel.w<10||sel.h<10){document.getElementById('camResult').textContent='撮影画像と選択範囲が必要です。';return}
+ if(!dict.length){document.getElementById('camResult').textContent='先に標準点字辞書を読み込んでください。';return}
+ const n=estimateCellCount();
+ document.getElementById('camCells').value=n;
+ recognizeSelectedCells();
+ const st=document.getElementById('camStatus');
+ st.textContent='マス数を自動推定しました：'+n+'マス。必要なら数字を変更して再認識できます。';
+}
+function recognizeSelectedCell(){recognizeSelectedCells();}
+
+function speakCameraText(){const t=document.getElementById('input').value;if(!t){document.getElementById('camSpeech').textContent='読み上げる文字がありません。';return}speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang='ja-JP';speechSynthesis.speak(u)}
+function cameraFullPipeline(){
+ if(!camStream){document.getElementById('camStatus').textContent='先にカメラを開始してください。';return}
+ captureCamera();
+ setTimeout(()=>{
+  if(!camImage||!sel){document.getElementById('camStatus').textContent='撮影後、点字範囲をドラッグ選択してください。';return}
+  autoRecognizeSelectedCells();
+  const t=document.getElementById('input').value;
+  if(t){speakCameraText();document.getElementById('camStatus').textContent+=' 認識結果を読み上げました。';}
+ },150);
+}
+
+</script></body></html>
